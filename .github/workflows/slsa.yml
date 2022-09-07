@@ -26,6 +26,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@dc7b9719a96d48369863986a06765841d7ea23f6 # v2.0.0
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e0881f8fe90b25e305bbf0309761e9314607e25
+        with:
+          cosign-release: 'v1.11.1'
+
       - name: Authenticate Docker
         uses: docker/login-action@49ed152c8eca782a232dede0303416e8f356c37b # v2.0.0
         with:
@@ -54,6 +59,19 @@ jobs:
           # available to the inputs of a reusable workflow call.
           image_name="$(echo ${IMAGE_REGISTRY}/${IMAGE_NAME} | tr '[:upper:]' '[:lower:]')" 
           echo "::set-output name=image::$image_name"
+      
+      # Sign the resulting Docker image digest except on PRs.
+      # This will only write to the public Rekor transparency log when the Docker
+      # repository is public to avoid leaking data.  If you would like to publish
+      # transparency data even for private images, pass --force to cosign below.
+      # https://github.com/sigstore/cosign
+      - name: Sign the published Docker image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        # This step uses the identity token to provision an ephemeral certificate
+        # against the sigstore community Fulcio instance.
+        run: echo "${{ steps.meta.outputs.tags }}" | xargs -I {} cosign sign {}@${{ steps.build.outputs.digest }}
+
         
 
   # This step calls the container workflow to generate provenance and push it to
@@ -82,23 +100,3 @@ jobs:
       compile-generator: true # false currently don't work
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
-  
-  signature:
-    needs: [build, provenance]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install cosign
-        uses: sigstore/cosign-installer@7e0881f8fe90b25e305bbf0309761e9314607e25
-        with:
-          cosign-release: 'v1.9.0'
-      # Sign the resulting Docker image digest except on PRs.
-      # This will only write to the public Rekor transparency log when the Docker
-      # repository is public to avoid leaking data.  If you would like to publish
-      # transparency data even for private images, pass --force to cosign below.
-      # https://github.com/sigstore/cosign
-      - name: Sign the published Docker image
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-        # This step uses the identity token to provision an ephemeral certificate
-        # against the sigstore community Fulcio instance.
-        run: echo "${{ steps.meta.outputs.tags }}" | xargs -I {} cosign sign {}@${{ steps.build-and-push.outputs.digest }}
