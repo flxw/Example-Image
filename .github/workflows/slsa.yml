@@ -71,7 +71,6 @@ jobs:
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${{ steps.meta.outputs.tags }}" | xargs -I {} cosign sign {}@${{ steps.build.outputs.digest }}
-
         
 
   # This step calls the container workflow to generate provenance and push it to
